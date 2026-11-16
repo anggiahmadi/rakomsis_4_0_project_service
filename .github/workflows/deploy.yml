@@ -32,15 +32,19 @@ jobs:
             set -e
             APP_DIR=/var/www/html/rakomsis_v_4_0/${{ matrix.env }}/${{ env.SERVICE }}
             AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-
+          
             if [ ! -d "$APP_DIR/.git" ]; then
               mkdir -p "$APP_DIR"
               git -c http.extraheader="Authorization: Basic $AUTH" clone https://github.com/${{ env.REPO }}.git "$APP_DIR"
             fi
-
+          
             cd "$APP_DIR"
+            git config --global --add safe.directory "$APP_DIR"
             git -c http.extraheader="Authorization: Basic $AUTH" pull origin main
             composer install --no-dev --optimize-autoloader --no-interaction
             php artisan optimize:clear
             php artisan config:cache
             php artisan queue:restart
+          
+            chown -R root:www-data "$APP_DIR"
+            chmod -R g+rwX "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
