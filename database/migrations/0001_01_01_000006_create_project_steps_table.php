@@ -29,11 +29,11 @@ return new class extends Migration
             $table->foreign('project_template_step_id')->references('id')->on('project_template_steps');
         });
 
-        Schema::create('form_project_step', function (Blueprint $table) {
+       Schema::create('form_project_step', function (Blueprint $table) {
             $table->bigInteger('project_step_id')->unsigned()->index();
             $table->bigInteger('template_form_id')->unsigned()->index();
             $table->bigInteger('custom_form_id')->unsigned()->index()->nullable();
-            $table->unique(['project_step_id', 'template_form_id']);
+            $table->unique(['project_step_id', 'template_form_id'], 'fps_step_form_unique');
             $table->foreign('project_step_id')->references('id')->on('project_steps');
         });
     }
@@ -43,7 +43,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('project_steps');
         Schema::dropIfExists('form_project_step');
+        Schema::dropIfExists('project_steps');
     }
 };
