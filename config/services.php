@@ -14,6 +14,13 @@ return [
     |
     */
 
+    'accept_secrets' => env('ACCEPTED_SECRETS'),
+
+    'files' => [
+        'base_uri' => env('FILES_SERVICE_BASE_URL'),
+        'secret' => env('FILES_SERVICE_SECRET'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

@@ -25,10 +25,9 @@ return new class extends Migration
             $table->foreign('project_template_id')->references('id')->on('project_templates');
         });
 
-        Schema::table('form_project_step_template', function (Blueprint $table) {
+        Schema::create('form_project_step_template', function (Blueprint $table) {
             $table->bigInteger('project_template_step_id')->unsigned()->index();
             $table->bigInteger('form_template_id')->unsigned()->index();
-            $table->integer('order_no')->default(0);
             $table->unique(['project_template_step_id', 'form_template_id']);
             $table->foreign('project_template_step_id')->references('id')->on('project_template_steps');
         });
