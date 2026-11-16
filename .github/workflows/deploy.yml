@@ -6,7 +6,7 @@ on:
 
 env:
   SERVICE: project_service # ganti sesuai repo/service
-  REPO: ORG/REPO           # ganti dengan repo yang benar
+  REPO: ${{ github.repository }}           # ganti dengan repo yang benar
 
 jobs:
   deploy:
