@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProjectRequest;
 use App\Models\Project;
+use App\Models\ProjectTemplate;
 use App\Traits\ApiResponser;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
@@ -27,6 +28,114 @@ class ProjectController extends Controller
             : $query = $query->get();
 
         return $this->successResponse($query);
+    }
+
+    public function dashboard(Request $request)
+    {
+        $request->validate(['tenant_id' => 'required|integer']);
+
+        $projects = Project::query()
+            ->with([
+                'projectSteps' => fn ($query) => $query->orderBy('order_no'),
+                'projectTemplate',
+            ])
+            ->where('tenant_id', $request->tenant_id)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $active = $projects->whereIn('status', ['draft', 'in progress', 'on hold']);
+        $completed = $projects->where('status', 'completed');
+        $noSource = $active->whereNull('source_id');
+
+        $rows = $projects->map(function (Project $project) {
+            $total = $project->projectSteps->count();
+            $done = $project->projectSteps->whereNotNull('ended_at')->count();
+            $progress = $total > 0 ? (int) round($done / $total * 100) : 0;
+            $activeStep = $project->projectSteps->first(
+                fn ($step) => $step->ended_at === null,
+            ) ?? $project->projectSteps->last();
+            $issues = [];
+
+            if (! $project->source_id && $project->status !== 'completed') {
+                $issues[] = [
+                    'tone' => 'warn',
+                    'tag' => 'Sales Order',
+                    'text' => 'Belum memilih Sales Order',
+                ];
+            }
+
+            if (
+                $project->status !== 'completed' &&
+                $project->updated_at?->lt(now()->subDays(7))
+            ) {
+                $issues[] = [
+                    'tone' => 'warn',
+                    'tag' => 'Draft diam',
+                    'text' => 'Tidak ada perubahan lebih dari 7 hari',
+                ];
+            }
+
+            if ($total > 0 && $done < $total && $total - $done <= 2 && $done > 0) {
+                $issues[] = [
+                    'tone' => 'acc',
+                    'tag' => 'Hampir selesai',
+                    'text' => 'Tinggal '.($total - $done).' step lagi',
+                ];
+            }
+
+            usort($issues, fn ($a, $b) => strlen($b['text']) <=> strlen($a['text']));
+
+            return [
+                'id' => $project->id,
+                'name' => $project->name,
+                'code' => $project->code,
+                'source_id' => $project->source_id,
+                'template_name' => $project->projectTemplate?->name,
+                'template_id' => $project->project_template_id,
+                'status' => $project->status,
+                'steps_done' => $done,
+                'steps_total' => $total,
+                'progress' => $progress,
+                'last_step' => $activeStep?->name,
+                'updated_at' => $project->updated_at,
+                'issues' => $issues,
+                'todos_total' => 0,
+                'todos_done' => 0,
+                'next_todo' => null,
+            ];
+        })->sortByDesc(
+            fn ($project) => count($project['issues']) * 1000 + $project['progress'],
+        )->values();
+
+        $templates = ProjectTemplate::query()
+            ->where('tenant_id', $request->tenant_id)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($template) => [
+                'id' => $template->id,
+                'name' => $template->name,
+                'total' => $projects->where(
+                    'project_template_id',
+                    $template->id,
+                )->count(),
+            ]);
+
+        return $this->successResponse([
+            'summary' => [
+                'total' => $projects->count(),
+                'active' => $active->count(),
+                'completed' => $completed->count(),
+                'no_customer' => $noSource->count(),
+                'avg_progress' => (int) round($active->avg(
+                    fn ($project) => $project->projectSteps->count()
+                        ? $project->projectSteps->whereNotNull('ended_at')->count()
+                            / $project->projectSteps->count() * 100
+                        : 0,
+                ) ?? 0),
+            ],
+            'projects' => $rows,
+            'templates' => $templates,
+        ]);
     }
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::controller(ProjectController::class)->group(function () {
     Route::get('projects', 'index')->middleware('auth.access');
+    Route::get('projects-dashboard', 'dashboard')->middleware('auth.access');
     Route::get('projects/{id}', 'show')->middleware('auth.access');
     Route::get('projects-get-code', 'getCode')->middleware('auth.access');
     Route::get('projects-get-by-code', 'getByCode')->middleware('auth.access');
