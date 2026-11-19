@@ -8,7 +8,8 @@ use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-
+use Illuminate\Support\Facades\DB;
+use Yajra\DataTables\Facades\DataTables;
 class ProjectController extends Controller
 {
     use ApiResponser;
@@ -80,7 +81,12 @@ class ProjectController extends Controller
 
     public function getData(object $request)
     {
-        $query = Project::with('projectSteps', 'projectTemplate')->query()->where('tenant_id', $request->tenant_id);
+        $query = Project::query()
+            ->with([
+                'projectSteps' => fn($q) => $q->orderBy('order_no'),
+                'projectTemplate',
+            ])
+            ->where('tenant_id', $request->tenant_id);
 
         if ($request->data_type == 'softdelete') $query->onlyTrashed();
 
@@ -89,8 +95,8 @@ class ProjectController extends Controller
         if ($keyword) {
             $query->where(function ($q) use ($keyword) {
                 $q->where('code', 'like', "%{$keyword}%")
-                ->orWhere('name', 'like', "%{$keyword}%")
-                ->orWhere('desc', 'like', "%{$keyword}%");
+                    ->orWhere('name', 'like', "%{$keyword}%")
+                    ->orWhere('desc', 'like', "%{$keyword}%");
             });
         }
 
@@ -101,5 +107,46 @@ class ProjectController extends Controller
         }
 
         return $query;
+    }
+
+    public function datatables(Request $request)
+    {
+        $query = $this->getData($request);
+
+        // filter status: a = berjalan, l = selesai
+        if ($request->status_filter === 'a') {
+            $query->whereIn('status', ['draft', 'in progress', 'on hold']);
+        } elseif ($request->status_filter === 'l') {
+            $query->where('status', 'completed');
+        }
+
+        if ($request->has('order')) {
+            $query->reorder();
+        }
+
+        $base = Project::query()->where('tenant_id', $request->tenant_id);
+
+        return datatables()->eloquent($query)
+            ->addColumn('steps_total', fn($row) => $row->projectSteps->count())
+            ->addColumn('steps_done', fn($row) => $row->projectSteps->whereNotNull('ended_at')->count())
+            ->addColumn('progress', function ($row) {
+                $total = $row->projectSteps->count();
+
+                return $total
+                    ? (int) round($row->projectSteps->whereNotNull('ended_at')->count() / $total * 100)
+                    : 0;
+            })
+            ->addColumn('last_step', function ($row) {
+                $step = $row->projectSteps->first(fn($s) => is_null($s->ended_at))
+                    ?? $row->projectSteps->last();
+
+                return $step?->name;
+            })
+            ->with('summary', fn() => [
+                'total' => (clone $base)->count(),
+                'running' => (clone $base)->whereIn('status', ['draft', 'in progress', 'on hold'])->count(),
+                'done' => (clone $base)->where('status', 'completed')->count(),
+            ])
+            ->toJson();
     }
 }
