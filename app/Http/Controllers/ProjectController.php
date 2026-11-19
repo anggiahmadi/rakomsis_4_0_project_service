@@ -42,7 +42,10 @@ class ProjectController extends Controller
      */
     public function show(string $id)
     {
-        $project = Project::with(['projectSteps', 'projectTemplate'])->findOrFail($id);
+        $project = Project::with([
+            'projectSteps.forms',
+            'projectTemplate',
+        ])->findOrFail($id);
 
         $formsById = $this->loadCustomForms($project->projectSteps);
         $project->projectSteps->each(function ($step) use ($formsById) {
@@ -283,7 +286,7 @@ class ProjectController extends Controller
     private function loadCustomForms($steps)
     {
         $formIds = $steps
-            ->flatMap(fn ($step) => collect($step->forms)->pluck('custom_form_id'))
+            ->flatMap(fn ($step) => $step->forms->pluck('custom_form_id'))
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
