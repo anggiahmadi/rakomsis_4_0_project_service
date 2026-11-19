@@ -451,13 +451,12 @@ class ProjectController extends Controller
                 ->all();
         }
 
-        $saved = Http::timeout(15)
+        Http::timeout(15)
             ->withHeaders(['Authorization' => $secret])
             ->put(rtrim($baseUri, '/').'/api/custom_forms/'.$formId, $form)
-            ->throw()
-            ->json('data');
+            ->throw();
 
-        return $this->successResponse($saved);
+        return $this->show($id);
     }
 
     /**
