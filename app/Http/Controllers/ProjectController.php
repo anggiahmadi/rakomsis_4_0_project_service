@@ -157,10 +157,37 @@ class ProjectController extends Controller
         ])->findOrFail($id);
 
         $formsById = $this->loadCustomForms($project->projectSteps);
+        $allResults = $formsById
+            ->flatMap(fn ($form) => $form['custom_form_results'] ?? [])
+            ->values();
         $project->projectSteps->each(function ($step) use ($formsById) {
-            $step->forms->each(function ($form) use ($formsById) {
+            $step->forms->each(function ($form) use ($formsById, $allResults) {
                 $customForm = $formsById->get((int) $form->custom_form_id, []);
                 unset($customForm['id']);
+                $customForm['custom_form_results'] = collect(
+                    $customForm['custom_form_results'] ?? [],
+                )->map(function ($result) use ($allResults) {
+                    $result['horizontal_items'] = collect(
+                        $allResults->where(
+                            'field_template_id',
+                            $result['horizontal_field_template_id'] ?? null,
+                        ),
+                    )->map(fn ($item) => [
+                        'id' => $item['answer_no'].'-'.$item['field_template_id'],
+                        'label' => $item['value'] ?? '',
+                    ])->filter(fn ($item) => filled($item['label']))->values();
+                    $result['vertical_items'] = collect(
+                        $allResults->where(
+                            'field_template_id',
+                            $result['vertical_field_template_id'] ?? null,
+                        ),
+                    )->map(fn ($item) => [
+                        'id' => $item['answer_no'].'-'.$item['field_template_id'],
+                        'label' => $item['value'] ?? '',
+                    ])->filter(fn ($item) => filled($item['label']))->values();
+
+                    return $result;
+                })->values();
 
                 $form->setRawAttributes(array_merge(
                     $form->getAttributes(),
@@ -266,6 +293,10 @@ class ProjectController extends Controller
                     ->map(fn ($field) => [
                         'id' => $field['id'],
                         'field_template_id' => $field['id'],
+                        'horizontal_field_template_id' =>
+                            data_get($field, 'pivot.horizontal_field_template_id'),
+                        'vertical_field_template_id' =>
+                            data_get($field, 'pivot.vertical_field_template_id'),
                         'is_required' => (bool) data_get($field, 'pivot.is_required'),
                         'is_abnormal' => false,
                         'has_file_upload' => (bool) data_get(
@@ -576,6 +607,10 @@ class ProjectController extends Controller
                     ->map(fn ($field) => [
                         'id' => $field['id'],
                         'field_template_id' => $field['id'],
+                        'horizontal_field_template_id' =>
+                            data_get($field, 'pivot.horizontal_field_template_id'),
+                        'vertical_field_template_id' =>
+                            data_get($field, 'pivot.vertical_field_template_id'),
                         'custom_form_id' => $formId,
                         'is_required' => (bool) data_get($field, 'pivot.is_required'),
                         'is_abnormal' => false,
