@@ -8,7 +8,6 @@ use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\DB;
 use Yajra\DataTables\Facades\DataTables;
 class ProjectController extends Controller
 {
