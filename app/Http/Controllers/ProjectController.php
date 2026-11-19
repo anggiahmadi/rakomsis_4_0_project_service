@@ -452,19 +452,18 @@ class ProjectController extends Controller
         }
 
         // FIX: log respons supaya kegagalan simpan di file service terlihat
+        $response = Http::timeout(15)
+            ->withHeaders([
+                'Authorization' => $secret,
+                'Accept' => 'application/json',
+            ])
+            ->put(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId, $form);
+
         return response()->json([
             'debug' => true,
-            'payload_keys' => array_keys($validated['rows'][0] ?? []),
-            'results' => collect($form['custom_form_results'])->map(fn ($r) => [
-                'id' => $r['id'] ?? null,
-                'fti' => $r['field_template_id'] ?? null,
-                'value' => $r['value'] ?? null,
-            ])->all(),
+            'put_status' => $response->status(),
+            'put_body' => $response->json() ?? $response->body(),
         ]);
-        $response = Http::timeout(15)
-            ->withHeaders(['Authorization' => $secret])
-            ->put(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId, $form)
-            ->throw();
 
         \Log::info('saveForm PUT', [
             'form_id' => $formId,
