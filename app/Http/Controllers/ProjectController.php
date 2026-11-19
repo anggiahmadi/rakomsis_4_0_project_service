@@ -134,6 +134,34 @@ class ProjectController extends Controller
             throw new RuntimeException('File service returned an invalid custom form.');
         }
 
+        if (empty($form['custom_form_results']) && ! empty($form['form_template_id'])) {
+            $template = Http::timeout(15)
+                ->withHeaders(['Authorization' => $secret])
+                ->get(rtrim($baseUri, '/').'/api/form_templates/'.$form['form_template_id'])
+                ->throw()
+                ->json('data');
+
+            $form['custom_form_results'] = collect($template['fields'] ?? [])
+                ->map(fn ($field) => [
+                    'id' => $field['id'],
+                    'field_template_id' => $field['id'],
+                    'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                    'is_abnormal' => false,
+                    'has_photo_if_abnormal' => (bool) data_get(
+                        $field,
+                        'pivot.has_photo_if_abnormal',
+                    ),
+                    'name' => $field['name'],
+                    'desc' => $field['desc'] ?? null,
+                    'value' => null,
+                    'file_path' => null,
+                    'type' => $field['type'],
+                    'options' => $field['options'] ?? [],
+                ])
+                ->values()
+                ->all();
+        }
+
         $answers = collect($validated['answers'])->mapWithKeys(
             fn ($value, $key) => [(string) $key => $value],
         );
@@ -311,12 +339,56 @@ class ProjectController extends Controller
             }
         });
 
-        return $formIds->mapWithKeys(function ($formId) use ($responses) {
+        return $formIds->mapWithKeys(function ($formId) use (
+            $responses,
+            $baseUri,
+            $secret,
+        ) {
             $response = $responses[(string) $formId];
             $form = $response->throw()->json('data');
 
             if (! is_array($form)) {
                 throw new RuntimeException("File service returned an invalid custom form {$formId}.");
+            }
+
+            if (
+                empty($form['custom_form_results']) &&
+                ! empty($form['form_template_id'])
+            ) {
+                $template = Http::timeout(15)
+                    ->withHeaders(['Authorization' => $secret])
+                    ->get(
+                        rtrim($baseUri, '/').'/api/form_templates/'.$form['form_template_id'],
+                    )
+                    ->throw()
+                    ->json('data');
+
+                if (! is_array($template)) {
+                    throw new RuntimeException(
+                        "File service returned an invalid form template {$form['form_template_id']}.",
+                    );
+                }
+
+                $form['custom_form_results'] = collect($template['fields'] ?? [])
+                    ->map(fn ($field) => [
+                        'id' => $field['id'],
+                        'field_template_id' => $field['id'],
+                        'custom_form_id' => $formId,
+                        'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                        'is_abnormal' => false,
+                        'has_photo_if_abnormal' => (bool) data_get(
+                            $field,
+                            'pivot.has_photo_if_abnormal',
+                        ),
+                        'name' => $field['name'],
+                        'desc' => $field['desc'] ?? null,
+                        'value' => null,
+                        'file_path' => null,
+                        'type' => $field['type'],
+                        'options' => $field['options'] ?? [],
+                    ])
+                    ->values()
+                    ->all();
             }
 
             return [$formId => $form];
