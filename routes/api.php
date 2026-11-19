@@ -14,6 +14,9 @@ Route::controller(ProjectController::class)->group(function () {
     Route::get('datatables/projects', 'datatables')->middleware('auth.access');
     Route::post('projects', 'store')->middleware('auth.access');
     Route::put('projects/{id}', 'update')->middleware('auth.access');
+    Route::post('projects/{id}/steps/{stepId}/finish', 'finishStep')->middleware('auth.access');
+    Route::post('projects/{id}/steps/{stepId}/unlock', 'unlockStep')->middleware('auth.access');
+    Route::put('projects/{id}/forms/{formId}', 'saveForm')->middleware('auth.access');
     Route::put('projects/{id}/restore', 'restore')->middleware('auth.access');
     Route::delete('projects/{id}', 'destroy')->middleware('auth.access');
 });
