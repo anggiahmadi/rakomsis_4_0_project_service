@@ -4,6 +4,7 @@ namespace App\Models;
 
 use DB;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProjectTemplateStep extends Model
 {
@@ -25,13 +26,11 @@ class ProjectTemplateStep extends Model
         return $this->belongsTo(ProjectTemplate::class);
     }
 
-   public function forms()
-{
-    return $this->belongsToMany(
-        FormTemplate::class,
-        'form_project_step_template',
-        'project_template_step_id',
-        'form_template_id'
-    );
-}
+   public function forms(): HasMany
+    {
+        return $this->hasMany(
+            ProjectTemplateStepForm::class,
+            'project_template_step_id'
+        );
+    }
 }
