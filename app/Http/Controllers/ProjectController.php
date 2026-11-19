@@ -147,6 +147,10 @@ class ProjectController extends Controller
                     'field_template_id' => $field['id'],
                     'is_required' => (bool) data_get($field, 'pivot.is_required'),
                     'is_abnormal' => false,
+                    'has_file_upload' => (bool) data_get(
+                        $field,
+                        'pivot.has_file_upload',
+                    ),
                     'has_photo_if_abnormal' => (bool) data_get(
                         $field,
                         'pivot.has_photo_if_abnormal',
@@ -376,6 +380,10 @@ class ProjectController extends Controller
                         'custom_form_id' => $formId,
                         'is_required' => (bool) data_get($field, 'pivot.is_required'),
                         'is_abnormal' => false,
+                        'has_file_upload' => (bool) data_get(
+                            $field,
+                            'pivot.has_file_upload',
+                        ),
                         'has_photo_if_abnormal' => (bool) data_get(
                             $field,
                             'pivot.has_photo_if_abnormal',
