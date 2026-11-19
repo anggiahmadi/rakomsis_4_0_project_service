@@ -8,6 +8,7 @@ use DB;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Arr;
 
 class ProjectTemplateRequest extends FormRequest
 {
@@ -43,36 +44,44 @@ class ProjectTemplateRequest extends FormRequest
         ];
     }
 
-    public function store()
-    {
-        $this->validate([
-            'code' => Rule::unique('project_templates')->where('tenant_id', $this->tenant_id)
-        ]);
+   public function store()
+{
+    $this->validate([
+        'code' => Rule::unique('project_templates')->where('tenant_id', $this->tenant_id),
+    ]);
 
-        DB::beginTransaction();
+    return DB::transaction(function () {
+        $projectTemplate = ProjectTemplate::create(
+            $this->only(['tenant_id', 'code', 'name', 'desc'])
+        );
 
-        $projectTemplate = ProjectTemplate::create($this->all());
+        foreach ($this->input('project_template_steps', []) as $stepData) {
+            $step = ProjectTemplateStep::create(array_merge(
+                Arr::except($stepData, ['id', 'forms']),
+                [
+                    'tenant_id' => $this->tenant_id,
+                    'project_template_id' => $projectTemplate->id,
+                ]
+            ));
 
-        $projectTemplateSteps = $this->input('project_template_steps', []);
+            foreach (data_get($stepData, 'forms', []) as $form) {
+                $formTemplateId = data_get($form, 'form_template_id');
 
-        foreach ($projectTemplateSteps as $stepData) {
-            $projecTemplateStep = ProjectTemplateStep::create(array_merge($stepData, ['project_template_id' => $projectTemplate->id]));
+                if ($formTemplateId === null) {
+                    continue;
+                }
 
-            $forms = $stepData->forms;
-
-            foreach ($forms as $form) {
                 DB::table('form_project_step_template')->insert([
-                    'project_template_step_id' => $projecTemplateStep->id,
-                    'form_template_id' => $form->form_template_id,
-                    'order_no' => $form->order_no
+                    'project_template_step_id' => $step->id,
+                    'form_template_id' => $formTemplateId,
+                    'order_no' => data_get($form, 'order_no', 0),
                 ]);
             }
         }
 
-        DB::commit();
-
         return $projectTemplate;
-    }
+    });
+}
 
     public function update($id)
     {
