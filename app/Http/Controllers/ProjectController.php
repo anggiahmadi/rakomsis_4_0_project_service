@@ -49,15 +49,15 @@ class ProjectController extends Controller
 
         $formsById = $this->loadCustomForms($project->projectSteps);
         $project->projectSteps->each(function ($step) use ($formsById) {
-            $step->setAttribute(
-                'forms',
-                collect($step->forms)->map(function ($form) use ($formsById) {
-                    return array_merge(
-                        (array) $form,
-                        $formsById->get((int) $form->custom_form_id, []),
-                    );
-                })->values(),
-            );
+            $step->forms->each(function ($form) use ($formsById) {
+                $customForm = $formsById->get((int) $form->custom_form_id, []);
+                unset($customForm['id']);
+
+                $form->setRawAttributes(array_merge(
+                    $form->getAttributes(),
+                    $customForm,
+                ));
+            });
         });
 
         return $this->successResponse($project);
