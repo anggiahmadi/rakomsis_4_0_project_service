@@ -78,6 +78,29 @@ class ProjectTemplateController extends Controller
         return $this->successResponse('deleted data is successfull');
     }
 
+    public function getByCode(Request $request)
+    {
+        $request->validate([
+            'tenant_id' => 'required',
+            'code' => 'required'
+        ]);
+
+        $data = ProjectTemplate::where('tenant_id', $request->tenant_id)
+            ->where('code', $request->code)
+            ->first();
+
+        return $this->successResponse($data);
+    }
+
+    public function getCode(Request $request)
+    {
+        $request->validate(['tenant_id' => 'required|integer']);
+
+        return $this->successResponse(
+            Controller::getMasterCode('project_templates', 'PT', $request->tenant_id, $request)
+        );
+    }
+
     public function getData(object $request)
     {
         $query = ProjectTemplate::query()->where('tenant_id', $request->tenant_id);
