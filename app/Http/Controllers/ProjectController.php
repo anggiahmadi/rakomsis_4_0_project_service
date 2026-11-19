@@ -318,6 +318,39 @@ class ProjectController extends Controller
                     ])
                     ->values()
                     ->all();
+            } else {
+                $templateFields = collect($template['fields'] ?? [])->keyBy('id');
+                $form['custom_form_results'] = collect(
+                    $form['custom_form_results'],
+                )->map(function ($result) use ($templateFields) {
+                    $field = $templateFields->get($result['field_template_id']);
+                    if (! $field) {
+                        return $result;
+                    }
+
+                    return array_merge($result, [
+                        'horizontal_field_template_id' => data_get(
+                            $field,
+                            'pivot.horizontal_field_template_id',
+                        ),
+                        'vertical_field_template_id' => data_get(
+                            $field,
+                            'pivot.vertical_field_template_id',
+                        ),
+                        'has_file_upload' => (bool) data_get(
+                            $field,
+                            'pivot.has_file_upload',
+                        ),
+                        'is_required' => (bool) data_get(
+                            $field,
+                            'pivot.is_required',
+                        ),
+                        'has_photo_if_abnormal' => (bool) data_get(
+                            $field,
+                            'pivot.has_photo_if_abnormal',
+                        ),
+                    ]);
+                })->values()->all();
             }
         }
 
@@ -638,7 +671,38 @@ class ProjectController extends Controller
                     ])
                     ->values()
                     ->all()
-                    : $form['custom_form_results'];
+                    : collect($form['custom_form_results'])->map(function ($result) use (
+                        $template,
+                    ) {
+                        $field = collect($template['fields'] ?? [])
+                            ->firstWhere('id', $result['field_template_id']);
+                        if (! $field) {
+                            return $result;
+                        }
+
+                        return array_merge($result, [
+                            'horizontal_field_template_id' => data_get(
+                                $field,
+                                'pivot.horizontal_field_template_id',
+                            ),
+                            'vertical_field_template_id' => data_get(
+                                $field,
+                                'pivot.vertical_field_template_id',
+                            ),
+                            'has_file_upload' => (bool) data_get(
+                                $field,
+                                'pivot.has_file_upload',
+                            ),
+                            'is_required' => (bool) data_get(
+                                $field,
+                                'pivot.is_required',
+                            ),
+                            'has_photo_if_abnormal' => (bool) data_get(
+                                $field,
+                                'pivot.has_photo_if_abnormal',
+                            ),
+                        ]);
+                    })->values()->all();
             }
 
             return [$formId => $form];
