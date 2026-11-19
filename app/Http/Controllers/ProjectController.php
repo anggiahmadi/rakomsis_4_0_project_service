@@ -218,8 +218,8 @@ class ProjectController extends Controller
     public function saveForm(Request $request, string $id, string $formId)
     {
         $validated = $request->validate([
-            'answers' => 'nullable|array',
-            'rows' => 'nullable|array',
+            'answers' => 'nullable|array|required_without:rows',
+            'rows' => 'nullable|array|required_without:answers',
             'rows.*' => 'array',
             'columns' => 'nullable|array',
             'columns.*.key' => 'required|string',
