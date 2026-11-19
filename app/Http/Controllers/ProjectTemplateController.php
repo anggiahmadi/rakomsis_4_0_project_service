@@ -8,6 +8,7 @@ use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Yajra\DataTables\Facades\DataTables;
 
 class ProjectTemplateController extends Controller
 {
@@ -112,8 +113,8 @@ class ProjectTemplateController extends Controller
         if ($keyword) {
             $query->where(function ($q) use ($keyword) {
                 $q->where('code', 'like', "%{$keyword}%")
-                ->orWhere('name', 'like', "%{$keyword}%")
-                ->orWhere('desc', 'like', "%{$keyword}%");
+                    ->orWhere('name', 'like', "%{$keyword}%")
+                    ->orWhere('desc', 'like', "%{$keyword}%");
             });
         }
 
@@ -124,5 +125,26 @@ class ProjectTemplateController extends Controller
         }
 
         return $query;
+    }
+
+    public function datatables(Request $request)
+    {
+        $query = $this->getData($request)->with([
+            'projectTemplateSteps' => fn($q) => $q->orderBy('order_no')->withCount('forms'),
+        ]);
+
+        // urutan default (created_at desc) dari getData() dibuang kalau DataTables kirim sort
+        if ($request->has('order')) {
+            $query->reorder();
+        }
+
+        return datatables()->eloquent($query)
+            ->addColumn('steps', fn($row) => $row->projectTemplateSteps->map(fn($s) => [
+                'id' => $s->id,
+                'name' => $s->name,
+                'forms_count' => $s->forms_count,
+            ])->values())
+            ->addColumn('forms_count', fn($row) => $row->projectTemplateSteps->sum('forms_count'))
+            ->toJson();
     }
 }
