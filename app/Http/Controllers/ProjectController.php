@@ -392,7 +392,12 @@ class ProjectController extends Controller
             );
             $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
                 ->map(function ($result) use ($answers) {
-                    $key = (string) ($result['id'] ?? '');
+                    $resultId = (string) ($result['id'] ?? '');
+                    $fieldId = (string) (
+                        $result['field_template_id'] ??
+                        $resultId
+                    );
+                    $key = $answers->has($fieldId) ? $fieldId : $resultId;
 
                     if ($answers->has($key)) {
                         $result['value'] = $answers->get($key);
