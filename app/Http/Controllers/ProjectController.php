@@ -108,7 +108,17 @@ class ProjectController extends Controller
 
     public function saveForm(Request $request, string $id, string $formId)
     {
-        $validated = $request->validate(['answers' => 'required|array']);
+        $validated = $request->validate([
+            'answers' => 'nullable|array',
+            'rows' => 'nullable|array',
+            'rows.*' => 'array',
+            'columns' => 'nullable|array',
+            'columns.*.key' => 'required|string',
+            'columns.*.name' => 'required|string|max:255',
+            'columns.*.type' => 'required|in:text,number,date',
+            'columns.*.required' => 'required|boolean',
+            'columns.*.options' => 'nullable|array',
+        ]);
         $project = Project::findOrFail($id);
         $stepIds = $project->projectSteps()->pluck('id');
         $pivot = DB::table('form_project_step')
@@ -134,53 +144,134 @@ class ProjectController extends Controller
             throw new RuntimeException('File service returned an invalid custom form.');
         }
 
-        if (empty($form['custom_form_results']) && ! empty($form['form_template_id'])) {
+        if (! empty($form['form_template_id'])) {
             $template = Http::timeout(15)
                 ->withHeaders(['Authorization' => $secret])
                 ->get(rtrim($baseUri, '/').'/api/form_templates/'.$form['form_template_id'])
                 ->throw()
                 ->json('data');
 
-            $form['custom_form_results'] = collect($template['fields'] ?? [])
-                ->map(fn ($field) => [
-                    'id' => $field['id'],
-                    'field_template_id' => $field['id'],
-                    'is_required' => (bool) data_get($field, 'pivot.is_required'),
+            $form['type'] = $template['type'] ?? $form['type'];
+            if (empty($form['custom_form_results'])) {
+                $form['custom_form_results'] = collect($template['fields'] ?? [])
+                    ->map(fn ($field) => [
+                        'id' => $field['id'],
+                        'field_template_id' => $field['id'],
+                        'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                        'is_abnormal' => false,
+                        'has_file_upload' => (bool) data_get(
+                            $field,
+                            'pivot.has_file_upload',
+                        ),
+                        'has_photo_if_abnormal' => (bool) data_get(
+                            $field,
+                            'pivot.has_photo_if_abnormal',
+                        ),
+                        'name' => $field['name'],
+                        'desc' => $field['desc'] ?? null,
+                        'answer_no' => 1,
+                        'order_no' => data_get($field, 'pivot.order_no', 0),
+                        'value' => null,
+                        'file_path' => null,
+                        'type' => $field['type'],
+                        'options' => $field['options'] ?? [],
+                    ])
+                    ->values()
+                    ->all();
+            }
+        }
+
+        if (array_key_exists('rows', $validated)) {
+            $existing = collect($form['custom_form_results'] ?? []);
+            $fields = $existing
+                ->unique(fn ($field) =>
+                    $field['field_template_id'] ?? 'runtime:'.$field['name'])
+                ->values();
+            $fields = $fields->concat(
+                collect($validated['columns'] ?? [])->map(fn ($column) => [
+                    '_runtime_key' => $column['key'],
+                    'field_template_id' => null,
+                    'is_required' => $column['required'],
                     'is_abnormal' => false,
-                    'has_file_upload' => (bool) data_get(
-                        $field,
-                        'pivot.has_file_upload',
-                    ),
-                    'has_photo_if_abnormal' => (bool) data_get(
-                        $field,
-                        'pivot.has_photo_if_abnormal',
-                    ),
-                    'name' => $field['name'],
-                    'desc' => $field['desc'] ?? null,
-                    'value' => null,
-                    'file_path' => null,
-                    'type' => $field['type'],
-                    'options' => $field['options'] ?? [],
-                ])
+                    'has_file_upload' => false,
+                    'has_photo_if_abnormal' => false,
+                    'name' => $column['name'],
+                    'desc' => null,
+                    'type' => $column['type'],
+                    'options' => $column['options'] ?? [],
+                ]),
+            )->unique(fn ($field) =>
+                $field['field_template_id'] ?? $field['_runtime_key'] ?? 'runtime:'.$field['name']
+            )->values();
+
+            $form['custom_form_results'] = collect($validated['rows'])
+                ->flatMap(function ($values, $rowIndex) use ($fields, $existing) {
+                    return $fields->values()->map(function ($field, $fieldIndex) use (
+                        $values,
+                        $rowIndex,
+                        $existing,
+                    ) {
+                        $fieldId = (string) (
+                            $field['field_template_id'] ??
+                            $field['_runtime_key'] ??
+                            'runtime:'.$field['name']
+                        );
+                        $savedResult = $existing->first(
+                            fn ($result) =>
+                                (string) (
+                                    $result['field_template_id'] ??
+                                    'runtime:'.$result['name']
+                                ) === $fieldId &&
+                                (int) ($result['answer_no'] ?? 1) === $rowIndex + 1,
+                        );
+                        $value = $values[$fieldId] ?? $values[(int) $fieldId] ?? null;
+                        $photo = $values['photo:'.$fieldId] ?? null;
+                        $filePath = is_array($value) && isset($value['content'])
+                            ? $value['content']
+                            : (is_array($photo) && isset($photo['content'])
+                                ? $photo['content']
+                                : ($savedResult['file_path'] ?? null));
+
+                        return array_merge($field, [
+                            'id' => $savedResult['id'] ?? null,
+                            'answer_no' => $rowIndex + 1,
+                            'order_no' => $fieldIndex,
+                            'value' => is_array($value) && isset($value['name'])
+                                ? $value['name']
+                                : $value,
+                            'file_path' => $filePath,
+                            'exising_file' => $savedResult['file_path'] ?? null,
+                        ]);
+                    });
+                })
+                ->values()
+                ->all();
+        } else {
+            $answers = collect($validated['answers'] ?? [])->mapWithKeys(
+                fn ($value, $key) => [(string) $key => $value],
+            );
+            $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
+                ->map(function ($result) use ($answers) {
+                    $key = (string) ($result['id'] ?? '');
+
+                    if ($answers->has($key)) {
+                        $result['value'] = $answers->get($key);
+                    }
+                    $photoKey = 'photo:'.$key;
+                    if (
+                        $answers->has($photoKey) &&
+                        is_array($answers->get($photoKey))
+                    ) {
+                        $existingFile = $result['file_path'] ?? null;
+                        $result['file_path'] = $answers->get($photoKey)['content'] ?? null;
+                        $result['exising_file'] = $existingFile;
+                    }
+
+                    return $result;
+                })
                 ->values()
                 ->all();
         }
-
-        $answers = collect($validated['answers'])->mapWithKeys(
-            fn ($value, $key) => [(string) $key => $value],
-        );
-        $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
-            ->map(function ($result) use ($answers) {
-                $key = (string) ($result['id'] ?? '');
-
-                if ($answers->has($key)) {
-                    $result['value'] = $answers->get($key);
-                }
-
-                return $result;
-            })
-            ->values()
-            ->all();
 
         $saved = Http::timeout(15)
             ->withHeaders(['Authorization' => $secret])
@@ -355,10 +446,7 @@ class ProjectController extends Controller
                 throw new RuntimeException("File service returned an invalid custom form {$formId}.");
             }
 
-            if (
-                empty($form['custom_form_results']) &&
-                ! empty($form['form_template_id'])
-            ) {
+            if (! empty($form['form_template_id'])) {
                 $template = Http::timeout(15)
                     ->withHeaders(['Authorization' => $secret])
                     ->get(
@@ -373,7 +461,9 @@ class ProjectController extends Controller
                     );
                 }
 
-                $form['custom_form_results'] = collect($template['fields'] ?? [])
+                $form['type'] = $template['type'] ?? $form['type'];
+                $form['custom_form_results'] = empty($form['custom_form_results'])
+                    ? collect($template['fields'] ?? [])
                     ->map(fn ($field) => [
                         'id' => $field['id'],
                         'field_template_id' => $field['id'],
@@ -390,13 +480,16 @@ class ProjectController extends Controller
                         ),
                         'name' => $field['name'],
                         'desc' => $field['desc'] ?? null,
+                        'answer_no' => 1,
+                        'order_no' => data_get($field, 'pivot.order_no', 0),
                         'value' => null,
                         'file_path' => null,
                         'type' => $field['type'],
                         'options' => $field['options'] ?? [],
                     ])
                     ->values()
-                    ->all();
+                    ->all()
+                    : $form['custom_form_results'];
             }
 
             return [$formId => $form];
