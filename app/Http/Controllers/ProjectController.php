@@ -160,7 +160,7 @@ class ProjectController extends Controller
         $allResults = $formsById
             ->flatMap(fn ($form) => $form['custom_form_results'] ?? [])
             ->values();
-        $project->projectSteps->each(function ($step) use ($formsById) {
+        $project->projectSteps->each(function ($step) use ($formsById, $allResults) {
             $step->forms->each(function ($form) use ($formsById, $allResults) {
                 $customForm = $formsById->get((int) $form->custom_form_id, []);
                 unset($customForm['id']);
