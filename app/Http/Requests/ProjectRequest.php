@@ -34,7 +34,7 @@ class ProjectRequest extends FormRequest
     {
         return [
             'tenant_id' => 'required|integer',
-            'project_template_id' => 'required|exists:project_templates',
+            'project_template_id' => 'required|exists:project_templates,id',
             'source' => 'required|string|max:255',
             'source_id' => 'nullable|integer',
             'source_info' => 'nullable|string|max:255',
