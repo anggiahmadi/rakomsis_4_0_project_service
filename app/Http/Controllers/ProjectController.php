@@ -272,6 +272,7 @@ class ProjectController extends Controller
         }
 
         $form = Http::timeout(15)
+            ->acceptJson()
             ->withHeaders(['Authorization' => $secret])
             ->get(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId)
             ->throw()
@@ -283,12 +284,12 @@ class ProjectController extends Controller
 
         if (! empty($form['form_template_id'])) {
             $template = Http::timeout(15)
+                ->acceptJson()
                 ->withHeaders(['Authorization' => $secret])
                 ->get(rtrim($baseUri, '/') . '/api/form_templates/' . $form['form_template_id'])
                 ->throw()
                 ->json('data');
 
-            // FIX: validasi template, sama seperti di loadCustomForms
             if (! is_array($template)) {
                 throw new RuntimeException('File service returned an invalid form template.');
             }
@@ -297,8 +298,8 @@ class ProjectController extends Controller
             if (empty($form['custom_form_results'])) {
                 $form['custom_form_results'] = collect($template['fields'] ?? [])
                     ->map(fn($field) => [
-                        'id' => null, // FIX: sebelumnya $field['id'] (ID template, bukan ID baris DB)
-                        'custom_form_id' => (int) $formId, // FIX
+                        'id' => null,
+                        'custom_form_id' => (int) $formId,
                         'field_template_id' => $field['id'],
                         'horizontal_field_template_id' =>
                         data_get($field, 'pivot.horizontal_field_template_id'),
@@ -341,15 +342,33 @@ class ProjectController extends Controller
             }
         }
 
-        // FIX: file service (CustomFormController@show) membuat baris virtual dari template
-        // dengan id = ID field template. Baris asli dari DB selalu punya created_at,
-        // baris virtual tidak. Kosongkan id baris virtual agar dibuat baru, bukan meng-update id palsu.
+        // Normalisasi id (baris virtual dari template tidak punya created_at) dan custom_form_id
         $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
             ->map(function ($result) use ($formId) {
                 if (empty($result['created_at'])) {
                     $result['id'] = null;
                 }
                 $result['custom_form_id'] = (int) $formId;
+
+                return $result;
+            })
+            ->values()
+            ->all();
+
+        // BARU: normalisasi options (data lama bisa ter-encode ganda jadi string)
+        $form['custom_form_results'] = collect($form['custom_form_results'])
+            ->map(function ($result) {
+                $options = $result['options'] ?? null;
+
+                if (is_string($options)) {
+                    $decoded = json_decode($options, true);
+                    if (is_string($decoded)) { // encode ganda
+                        $decoded = json_decode($decoded, true);
+                    }
+                    $options = is_array($decoded) ? $decoded : [];
+                }
+
+                $result['options'] = is_array($options) ? $options : [];
 
                 return $result;
             })
@@ -411,7 +430,7 @@ class ProjectController extends Controller
 
                         return array_merge($field, [
                             'id' => $savedResult['id'] ?? null,
-                            'custom_form_id' => (int) $formId, // FIX
+                            'custom_form_id' => (int) $formId,
                             'answer_no' => $rowIndex + 1,
                             'order_no' => $fieldIndex,
                             'value' => is_array($value) && isset($value['name'])
@@ -430,7 +449,6 @@ class ProjectController extends Controller
             );
             $form['custom_form_results'] = collect($form['custom_form_results'])
                 ->map(function ($result) use ($answers) {
-                    // FIX: kunci jawaban pakai field_template_id dulu (id baris bisa null)
                     $resultId = (string) ($result['id'] ?? '');
                     $fieldId = (string) ($result['field_template_id'] ?? $resultId);
                     $key = $answers->has($fieldId) ? $fieldId : $resultId;
@@ -451,26 +469,12 @@ class ProjectController extends Controller
                 ->all();
         }
 
-        // FIX: log respons supaya kegagalan simpan di file service terlihat
-        $response = Http::timeout(15)
-            ->withHeaders([
-                'Authorization' => $secret,
-                'Accept' => 'application/json',
-            ])
-            ->put(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId, $form);
-
-        return response()->json([
-            'debug' => true,
-            'put_status' => $response->status(),
-            'put_body' => $response->json() ?? $response->body(),
-        ]);
-
-        \Log::info('saveForm PUT', [
-            'form_id' => $formId,
-            'sent_count' => count($form['custom_form_results']),
-            'sent_ids' => collect($form['custom_form_results'])->pluck('id'),
-            'response' => $response->json(),
-        ]);
+        // PUT final: acceptJson agar validasi gagal jadi 422 (bukan redirect), throw agar terlihat
+        Http::timeout(15)
+            ->acceptJson()
+            ->withHeaders(['Authorization' => $secret])
+            ->put(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId, $form)
+            ->throw();
 
         return $this->show($id);
     }
