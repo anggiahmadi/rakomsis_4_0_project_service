@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProjectRequest;
 use App\Models\Project;
+use App\Models\ProjectTemplate;
 use App\Traits\ApiResponser;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Yajra\DataTables\Facades\DataTables;
+
 class ProjectController extends Controller
 {
     use ApiResponser;
@@ -29,6 +31,114 @@ class ProjectController extends Controller
         return $this->successResponse($query);
     }
 
+    public function dashboard(Request $request)
+    {
+        $request->validate(['tenant_id' => 'required|integer']);
+
+        $projects = Project::query()
+            ->with([
+                'projectSteps' => fn($query) => $query->orderBy('order_no'),
+                'projectTemplate',
+            ])
+            ->where('tenant_id', $request->tenant_id)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $active = $projects->whereIn('status', ['draft', 'in progress', 'on hold']);
+        $completed = $projects->where('status', 'completed');
+        $noSource = $active->whereNull('source_id');
+
+        $rows = $projects->map(function (Project $project) {
+            $total = $project->projectSteps->count();
+            $done = $project->projectSteps->whereNotNull('ended_at')->count();
+            $progress = $total > 0 ? (int) round($done / $total * 100) : 0;
+            $activeStep = $project->projectSteps->first(
+                fn($step) => $step->ended_at === null,
+            ) ?? $project->projectSteps->last();
+            $issues = [];
+
+            if (! $project->source_id && $project->status !== 'completed') {
+                $issues[] = [
+                    'tone' => 'warn',
+                    'tag' => 'Sales Order',
+                    'text' => 'Belum memilih Sales Order',
+                ];
+            }
+
+            if (
+                $project->status !== 'completed' &&
+                $project->updated_at?->lt(now()->subDays(7))
+            ) {
+                $issues[] = [
+                    'tone' => 'warn',
+                    'tag' => 'Draft diam',
+                    'text' => 'Tidak ada perubahan lebih dari 7 hari',
+                ];
+            }
+
+            if ($total > 0 && $done < $total && $total - $done <= 2 && $done > 0) {
+                $issues[] = [
+                    'tone' => 'acc',
+                    'tag' => 'Hampir selesai',
+                    'text' => 'Tinggal ' . ($total - $done) . ' step lagi',
+                ];
+            }
+
+            usort($issues, fn($a, $b) => strlen($b['text']) <=> strlen($a['text']));
+
+            return [
+                'id' => $project->id,
+                'name' => $project->name,
+                'code' => $project->code,
+                'source_id' => $project->source_id,
+                'template_name' => $project->projectTemplate?->name,
+                'template_id' => $project->project_template_id,
+                'status' => $project->status,
+                'steps_done' => $done,
+                'steps_total' => $total,
+                'progress' => $progress,
+                'last_step' => $activeStep?->name,
+                'updated_at' => $project->updated_at,
+                'issues' => $issues,
+                'todos_total' => 0,
+                'todos_done' => 0,
+                'next_todo' => null,
+            ];
+        })->sortByDesc(
+            fn($project) => count($project['issues']) * 1000 + $project['progress'],
+        )->values();
+
+        $templates = ProjectTemplate::query()
+            ->where('tenant_id', $request->tenant_id)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn($template) => [
+                'id' => $template->id,
+                'name' => $template->name,
+                'total' => $projects->where(
+                    'project_template_id',
+                    $template->id,
+                )->count(),
+            ]);
+
+        return $this->successResponse([
+            'summary' => [
+                'total' => $projects->count(),
+                'active' => $active->count(),
+                'completed' => $completed->count(),
+                'no_customer' => $noSource->count(),
+                'avg_progress' => (int) round($active->avg(
+                    fn($project) => $project->projectSteps->count()
+                        ? $project->projectSteps->whereNotNull('ended_at')->count()
+                        / $project->projectSteps->count() * 100
+                        : 0,
+                ) ?? 0),
+            ],
+            'projects' => $rows,
+            'templates' => $templates,
+        ]);
+    }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -42,19 +152,49 @@ class ProjectController extends Controller
      */
     public function show(string $id)
     {
-        $project = Project::with(['projectSteps', 'projectTemplate'])->findOrFail($id);
+        $project = Project::with([
+            'projectSteps.forms',
+            'projectTemplate',
+        ])->findOrFail($id);
 
         $formsById = $this->loadCustomForms($project->projectSteps);
-        $project->projectSteps->each(function ($step) use ($formsById) {
-            $step->setAttribute(
-                'forms',
-                collect($step->forms)->map(function ($form) use ($formsById) {
-                    return array_merge(
-                        (array) $form,
-                        $formsById->get((int) $form->custom_form_id, []),
-                    );
-                })->values(),
-            );
+        $allResults = $formsById
+            ->flatMap(fn($form) => $form['custom_form_results'] ?? [])
+            ->values();
+        $project->projectSteps->each(function ($step) use ($formsById, $allResults) {
+            $step->forms->each(function ($form) use ($formsById, $allResults) {
+                $customForm = $formsById->get((int) $form->custom_form_id, []);
+                unset($customForm['id']);
+                $customForm['custom_form_results'] = collect(
+                    $customForm['custom_form_results'] ?? [],
+                )->map(function ($result) use ($allResults) {
+                    $result['horizontal_items'] = collect(
+                        $allResults->where(
+                            'field_template_id',
+                            $result['horizontal_field_template_id'] ?? null,
+                        ),
+                    )->map(fn($item) => [
+                        'id' => $item['answer_no'] . '-' . $item['field_template_id'],
+                        'label' => $item['value'] ?? '',
+                    ])->filter(fn($item) => filled($item['label']))->values();
+                    $result['vertical_items'] = collect(
+                        $allResults->where(
+                            'field_template_id',
+                            $result['vertical_field_template_id'] ?? null,
+                        ),
+                    )->map(fn($item) => [
+                        'id' => $item['answer_no'] . '-' . $item['field_template_id'],
+                        'label' => $item['value'] ?? '',
+                    ])->filter(fn($item) => filled($item['label']))->values();
+
+                    return $result;
+                })->values();
+
+                $form->setRawAttributes(array_merge(
+                    $form->getAttributes(),
+                    $customForm,
+                ));
+            });
         });
 
         return $this->successResponse($project);
@@ -105,7 +245,17 @@ class ProjectController extends Controller
 
     public function saveForm(Request $request, string $id, string $formId)
     {
-        $validated = $request->validate(['answers' => 'required|array']);
+        $validated = $request->validate([
+            'answers' => 'nullable|array|required_without:rows',
+            'rows' => 'nullable|array|required_without:answers',
+            'rows.*' => 'array',
+            'columns' => 'nullable|array',
+            'columns.*.key' => 'required|string',
+            'columns.*.name' => 'required|string|max:255',
+            'columns.*.type' => 'required|in:text,number,date',
+            'columns.*.required' => 'required|boolean',
+            'columns.*.options' => 'nullable|array',
+        ]);
         $project = Project::findOrFail($id);
         $stepIds = $project->projectSteps()->pluck('id');
         $pivot = DB::table('form_project_step')
@@ -122,8 +272,9 @@ class ProjectController extends Controller
         }
 
         $form = Http::timeout(15)
+            ->acceptJson()
             ->withHeaders(['Authorization' => $secret])
-            ->get(rtrim($baseUri, '/').'/api/custom_forms/'.$formId)
+            ->get(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId)
             ->throw()
             ->json('data');
 
@@ -131,29 +282,201 @@ class ProjectController extends Controller
             throw new RuntimeException('File service returned an invalid custom form.');
         }
 
-        $answers = collect($validated['answers'])->mapWithKeys(
-            fn ($value, $key) => [(string) $key => $value],
-        );
-        $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
-            ->map(function ($result) use ($answers) {
-                $key = (string) ($result['id'] ?? '');
+        if (! empty($form['form_template_id'])) {
+            $template = Http::timeout(15)
+                ->acceptJson()
+                ->withHeaders(['Authorization' => $secret])
+                ->get(rtrim($baseUri, '/') . '/api/form_templates/' . $form['form_template_id'])
+                ->throw()
+                ->json('data');
 
-                if ($answers->has($key)) {
-                    $result['value'] = $answers->get($key);
+            if (! is_array($template)) {
+                throw new RuntimeException('File service returned an invalid form template.');
+            }
+
+            $form['type'] = $template['type'] ?? $form['type'];
+            if (empty($form['custom_form_results'])) {
+                $form['custom_form_results'] = collect($template['fields'] ?? [])
+                    ->map(fn($field) => [
+                        'id' => null,
+                        'custom_form_id' => (int) $formId,
+                        'field_template_id' => $field['id'],
+                        'horizontal_field_template_id' =>
+                        data_get($field, 'pivot.horizontal_field_template_id'),
+                        'vertical_field_template_id' =>
+                        data_get($field, 'pivot.vertical_field_template_id'),
+                        'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                        'is_abnormal' => false,
+                        'has_file_upload' => (bool) data_get($field, 'pivot.has_file_upload'),
+                        'has_photo_if_abnormal' => (bool) data_get($field, 'pivot.has_photo_if_abnormal'),
+                        'name' => $field['name'],
+                        'desc' => $field['desc'] ?? null,
+                        'answer_no' => 1,
+                        'order_no' => data_get($field, 'pivot.order_no', 0),
+                        'value' => null,
+                        'file_path' => null,
+                        'type' => $field['type'],
+                        'options' => $field['options'] ?? [],
+                    ])
+                    ->values()
+                    ->all();
+            } else {
+                $templateFields = collect($template['fields'] ?? [])->keyBy('id');
+                $form['custom_form_results'] = collect($form['custom_form_results'])
+                    ->map(function ($result) use ($templateFields) {
+                        $field = $templateFields->get($result['field_template_id']);
+                        if (! $field) {
+                            return $result;
+                        }
+
+                        return array_merge($result, [
+                            'horizontal_field_template_id' =>
+                            data_get($field, 'pivot.horizontal_field_template_id'),
+                            'vertical_field_template_id' =>
+                            data_get($field, 'pivot.vertical_field_template_id'),
+                            'has_file_upload' => (bool) data_get($field, 'pivot.has_file_upload'),
+                            'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                            'has_photo_if_abnormal' => (bool) data_get($field, 'pivot.has_photo_if_abnormal'),
+                        ]);
+                    })->values()->all();
+            }
+        }
+
+        // Normalisasi id (baris virtual dari template tidak punya created_at) dan custom_form_id
+        $form['custom_form_results'] = collect($form['custom_form_results'] ?? [])
+            ->map(function ($result) use ($formId) {
+                if (empty($result['created_at'])) {
+                    $result['id'] = null;
                 }
+                $result['custom_form_id'] = (int) $formId;
 
                 return $result;
             })
             ->values()
             ->all();
 
-        $saved = Http::timeout(15)
-            ->withHeaders(['Authorization' => $secret])
-            ->put(rtrim($baseUri, '/').'/api/custom_forms/'.$formId, $form)
-            ->throw()
-            ->json('data');
+        // BARU: normalisasi options (data lama bisa ter-encode ganda jadi string)
+        $form['custom_form_results'] = collect($form['custom_form_results'])
+            ->map(function ($result) {
+                $options = $result['options'] ?? null;
 
-        return $this->successResponse($saved);
+                if (is_string($options)) {
+                    $decoded = json_decode($options, true);
+                    if (is_string($decoded)) { // encode ganda
+                        $decoded = json_decode($decoded, true);
+                    }
+                    $options = is_array($decoded) ? $decoded : [];
+                }
+
+                $result['options'] = is_array($options) ? $options : [];
+
+                return $result;
+            })
+            ->values()
+            ->all();
+
+        if (array_key_exists('rows', $validated)) {
+            $existing = collect($form['custom_form_results']);
+            $fields = $existing
+                ->unique(fn($field) =>
+                $field['field_template_id'] ?? 'runtime:' . $field['name'])
+                ->values();
+            $fields = $fields->concat(
+                collect($validated['columns'] ?? [])->map(fn($column) => [
+                    '_runtime_key' => $column['key'],
+                    'field_template_id' => null,
+                    'is_required' => $column['required'],
+                    'is_abnormal' => false,
+                    'has_file_upload' => false,
+                    'has_photo_if_abnormal' => false,
+                    'name' => $column['name'],
+                    'desc' => null,
+                    'type' => $column['type'],
+                    'options' => $column['options'] ?? [],
+                ]),
+            )->unique(
+                fn($field) =>
+                $field['field_template_id'] ?? $field['_runtime_key'] ?? 'runtime:' . $field['name']
+            )->values();
+
+            $form['custom_form_results'] = collect($validated['rows'])
+                ->flatMap(function ($values, $rowIndex) use ($fields, $existing, $formId) {
+                    return $fields->values()->map(function ($field, $fieldIndex) use (
+                        $values,
+                        $rowIndex,
+                        $existing,
+                        $formId,
+                    ) {
+                        $fieldId = (string) (
+                            $field['field_template_id'] ??
+                            $field['_runtime_key'] ??
+                            'runtime:' . $field['name']
+                        );
+                        $savedResult = $existing->first(
+                            fn($result) =>
+                            (string) (
+                                $result['field_template_id'] ??
+                                'runtime:' . $result['name']
+                            ) === $fieldId &&
+                                (int) ($result['answer_no'] ?? 1) === $rowIndex + 1,
+                        );
+                        $value = $values[$fieldId] ?? $values[(int) $fieldId] ?? null;
+                        $photo = $values['photo:' . $fieldId] ?? null;
+                        $filePath = is_array($value) && isset($value['content'])
+                            ? $value['content']
+                            : (is_array($photo) && isset($photo['content'])
+                                ? $photo['content']
+                                : ($savedResult['file_path'] ?? null));
+
+                        return array_merge($field, [
+                            'id' => $savedResult['id'] ?? null,
+                            'custom_form_id' => (int) $formId,
+                            'answer_no' => $rowIndex + 1,
+                            'order_no' => $fieldIndex,
+                            'value' => is_array($value) && isset($value['name'])
+                                ? $value['name']
+                                : $value,
+                            'file_path' => $filePath,
+                            'exising_file' => $savedResult['file_path'] ?? null,
+                        ]);
+                    });
+                })
+                ->values()
+                ->all();
+        } else {
+            $answers = collect($validated['answers'] ?? [])->mapWithKeys(
+                fn($value, $key) => [(string) $key => $value],
+            );
+            $form['custom_form_results'] = collect($form['custom_form_results'])
+                ->map(function ($result) use ($answers) {
+                    $resultId = (string) ($result['id'] ?? '');
+                    $fieldId = (string) ($result['field_template_id'] ?? $resultId);
+                    $key = $answers->has($fieldId) ? $fieldId : $resultId;
+
+                    if ($key !== '' && $answers->has($key)) {
+                        $result['value'] = $answers->get($key);
+                    }
+                    $photoKey = 'photo:' . $key;
+                    if ($answers->has($photoKey) && is_array($answers->get($photoKey))) {
+                        $existingFile = $result['file_path'] ?? null;
+                        $result['file_path'] = $answers->get($photoKey)['content'] ?? null;
+                        $result['exising_file'] = $existingFile;
+                    }
+
+                    return $result;
+                })
+                ->values()
+                ->all();
+        }
+
+        // PUT final: acceptJson agar validasi gagal jadi 422 (bukan redirect), throw agar terlihat
+        Http::timeout(15)
+            ->acceptJson()
+            ->withHeaders(['Authorization' => $secret])
+            ->put(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId, $form)
+            ->throw();
+
+        return $this->show($id);
     }
 
     /**
@@ -283,9 +606,9 @@ class ProjectController extends Controller
     private function loadCustomForms($steps)
     {
         $formIds = $steps
-            ->flatMap(fn ($step) => collect($step->forms)->pluck('custom_form_id'))
+            ->flatMap(fn($step) => $step->forms->pluck('custom_form_id'))
             ->filter()
-            ->map(fn ($id) => (int) $id)
+            ->map(fn($id) => (int) $id)
             ->unique()
             ->values();
 
@@ -304,16 +627,101 @@ class ProjectController extends Controller
                 $pool->as((string) $formId)
                     ->withHeaders(['Authorization' => $secret])
                     ->timeout(15)
-                    ->get(rtrim($baseUri, '/').'/api/custom_forms/'.$formId);
+                    ->get(rtrim($baseUri, '/') . '/api/custom_forms/' . $formId);
             }
         });
 
-        return $formIds->mapWithKeys(function ($formId) use ($responses) {
+        return $formIds->mapWithKeys(function ($formId) use (
+            $responses,
+            $baseUri,
+            $secret,
+        ) {
             $response = $responses[(string) $formId];
             $form = $response->throw()->json('data');
 
             if (! is_array($form)) {
                 throw new RuntimeException("File service returned an invalid custom form {$formId}.");
+            }
+
+            if (! empty($form['form_template_id'])) {
+                $template = Http::timeout(15)
+                    ->withHeaders(['Authorization' => $secret])
+                    ->get(
+                        rtrim($baseUri, '/') . '/api/form_templates/' . $form['form_template_id'],
+                    )
+                    ->throw()
+                    ->json('data');
+
+                if (! is_array($template)) {
+                    throw new RuntimeException(
+                        "File service returned an invalid form template {$form['form_template_id']}.",
+                    );
+                }
+
+                $form['type'] = $template['type'] ?? $form['type'];
+                $form['custom_form_results'] = empty($form['custom_form_results'])
+                    ? collect($template['fields'] ?? [])
+                    ->map(fn($field) => [
+                        'id' => $field['id'],
+                        'field_template_id' => $field['id'],
+                        'horizontal_field_template_id' =>
+                        data_get($field, 'pivot.horizontal_field_template_id'),
+                        'vertical_field_template_id' =>
+                        data_get($field, 'pivot.vertical_field_template_id'),
+                        'custom_form_id' => $formId,
+                        'is_required' => (bool) data_get($field, 'pivot.is_required'),
+                        'is_abnormal' => false,
+                        'has_file_upload' => (bool) data_get(
+                            $field,
+                            'pivot.has_file_upload',
+                        ),
+                        'has_photo_if_abnormal' => (bool) data_get(
+                            $field,
+                            'pivot.has_photo_if_abnormal',
+                        ),
+                        'name' => $field['name'],
+                        'desc' => $field['desc'] ?? null,
+                        'answer_no' => 1,
+                        'order_no' => data_get($field, 'pivot.order_no', 0),
+                        'value' => null,
+                        'file_path' => null,
+                        'type' => $field['type'],
+                        'options' => $field['options'] ?? [],
+                    ])
+                    ->values()
+                    ->all()
+                    : collect($form['custom_form_results'])->map(function ($result) use (
+                        $template,
+                    ) {
+                        $field = collect($template['fields'] ?? [])
+                            ->firstWhere('id', $result['field_template_id']);
+                        if (! $field) {
+                            return $result;
+                        }
+
+                        return array_merge($result, [
+                            'horizontal_field_template_id' => data_get(
+                                $field,
+                                'pivot.horizontal_field_template_id',
+                            ),
+                            'vertical_field_template_id' => data_get(
+                                $field,
+                                'pivot.vertical_field_template_id',
+                            ),
+                            'has_file_upload' => (bool) data_get(
+                                $field,
+                                'pivot.has_file_upload',
+                            ),
+                            'is_required' => (bool) data_get(
+                                $field,
+                                'pivot.is_required',
+                            ),
+                            'has_photo_if_abnormal' => (bool) data_get(
+                                $field,
+                                'pivot.has_photo_if_abnormal',
+                            ),
+                        ]);
+                    })->values()->all();
             }
 
             return [$formId => $form];
@@ -325,7 +733,7 @@ class ProjectController extends Controller
         $steps = $project->projectSteps()->orderBy('order_no')->get();
         $done = $steps->whereNotNull('ended_at')->count();
         $total = $steps->count();
-        $nextStep = $steps->first(fn ($step) => $step->ended_at === null);
+        $nextStep = $steps->first(fn($step) => $step->ended_at === null);
 
         $project->progress = $total ? round($done / $total * 100) : 0;
         $project->current_step = $nextStep?->name ?? 'Completed';

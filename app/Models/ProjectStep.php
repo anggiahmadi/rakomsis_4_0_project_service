@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use DB;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProjectStep extends Model
 {
@@ -23,9 +23,9 @@ class ProjectStep extends Model
         'ended_at',
     ];
 
-    public function forms()
+    public function forms(): HasMany
     {
-        return DB::table('form_project_step')->where('project_step_id', $this->id)->get();
+        return $this->hasMany(ProjectStepForm::class, 'project_step_id');
     }
 
     public function project()

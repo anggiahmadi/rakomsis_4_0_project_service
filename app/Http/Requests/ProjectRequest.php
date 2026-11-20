@@ -34,7 +34,7 @@ class ProjectRequest extends FormRequest
     {
         return [
             'tenant_id' => 'required|integer',
-            'project_template_id' => 'required|exists:project_templates',
+            'project_template_id' => 'required|exists:project_templates,id',
             'source' => 'required|string|max:255',
             'source_id' => 'nullable|integer',
             'source_info' => 'nullable|string|max:255',
@@ -234,6 +234,16 @@ class ProjectRequest extends FormRequest
             throw new RuntimeException('File service URL and secret must be configured.');
         }
 
+        $template = Http::timeout(15)
+            ->withHeaders(['Authorization' => $secret])
+            ->get(rtrim($baseUri, '/').'/api/form_templates/'.$formTemplateId)
+            ->throw()
+            ->json('data');
+
+        if (! is_array($template) || ! in_array($template['type'] ?? null, ['single', 'multiple', 'matrix'], true)) {
+            throw new RuntimeException('File service did not return a valid form template type.');
+        }
+
         $response = Http::timeout(15)
             ->withHeaders(['Authorization' => $secret])
             ->post(rtrim($baseUri, '/').'/api/custom_forms', [
@@ -241,6 +251,7 @@ class ProjectRequest extends FormRequest
                 'form_template_id' => $formTemplateId,
                 'source' => 'project_step',
                 'source_id' => $projectStepId,
+                'type' => $template['type'],
             ])
             ->throw();
 
