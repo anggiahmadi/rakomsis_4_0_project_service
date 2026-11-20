@@ -9,7 +9,9 @@ class ProjectTemplateStepForm extends Model
     protected $table = 'form_project_step_template';
 
     public $timestamps = false;
+
     public $incrementing = false;
+
     protected $primaryKey = null;
 
     protected $fillable = [

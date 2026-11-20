@@ -139,10 +139,10 @@ class ProjectTemplateController extends Controller
         }
 
         return datatables()->eloquent($query)
-            ->addColumn('steps', fn($row) => $row->projectTemplateSteps->map(fn($s) => [
-                'id' => $s->id,
-                'name' => $s->name,
-                'forms_count' => $s->forms_count,
+            ->addColumn('steps', fn($row) => $row->projectTemplateSteps->map(fn($step) => [
+                'id' => $step->id,
+                'name' => $step->name,
+                'forms_count' => $step->forms_count,
             ])->values())
             ->addColumn('forms_count', fn($row) => $row->projectTemplateSteps->sum('forms_count'))
             ->toJson();
