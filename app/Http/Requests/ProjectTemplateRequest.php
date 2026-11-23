@@ -33,6 +33,7 @@ class ProjectTemplateRequest extends FormRequest
             'project_template_steps.*.desc' => 'nullable|string',
             'project_template_steps.*.order_no' => 'required|integer',
             'project_template_steps.*.need_approval' => 'required|boolean',
+            'project_template_steps.*.has_print' => 'required|boolean',
             'project_template_steps.*.term' => 'required|in:no term,hour,day,week,month,year',
             'project_template_steps.*.estimation_time_in_term' => 'nullable|integer',
             'project_template_steps.*.forms' => 'nullable|array',
@@ -58,6 +59,7 @@ class ProjectTemplateRequest extends FormRequest
                         'desc',
                         'order_no',
                         'need_approval',
+                        'has_print',
                         'term',
                         'estimation_time_in_term',
                     ]),
@@ -109,6 +111,7 @@ class ProjectTemplateRequest extends FormRequest
                     'desc' => data_get($stepData, 'desc'),
                     'order_no' => data_get($stepData, 'order_no'),
                     'need_approval' => data_get($stepData, 'need_approval'),
+                    'has_print' => data_get($stepData, 'has_print'),
                     'term' => data_get($stepData, 'term'),
                     'estimation_time_in_term' => data_get($stepData, 'estimation_time_in_term', 0),
                 ]);

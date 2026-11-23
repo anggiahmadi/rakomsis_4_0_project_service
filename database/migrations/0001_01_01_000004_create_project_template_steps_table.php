@@ -16,6 +16,7 @@ return new class extends Migration
             $table->text('desc')->nullable();
             $table->integer('order_no')->default(0);
             $table->boolean('need_approval')->default(false);
+            $table->boolean('has_print')->default(false);
             $table->enum('term', ['no term', 'hour', 'day', 'week', 'month', 'year'])->default('no term');
             $table->integer('estimation_time_in_term')->default(0);
             $table->timestamps();

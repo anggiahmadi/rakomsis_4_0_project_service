@@ -17,6 +17,7 @@ class ProjectStep extends Model
         'desc',
         'order_no',
         'need_approval',
+        'has_print',
         'term',
         'estimation_time_in_term',
         'started_at',

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->text('desc')->nullable();
             $table->integer('order_no')->default(0);
             $table->boolean('need_approval')->default(false);
+            $table->boolean('has_print')->default(false); // To indicate if the step has a print requirement
             $table->enum('term', ['no term', 'hour', 'day', 'week', 'month', 'year'])->default('no term'); // To determine the term of the step, e.g., hour, day, week, month, year
             $table->integer('estimation_time_in_term')->default(0); // To determine the estimation time in the specified term, e.g., 2 hours, 3 days, 1 week, 2 months, 1 year
             $table->dateTime('started_at')->nullable(); // To store the start date and time of the project step

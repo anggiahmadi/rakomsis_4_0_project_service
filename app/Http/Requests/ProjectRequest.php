@@ -51,6 +51,7 @@ class ProjectRequest extends FormRequest
             'project_steps.*.desc' => 'nullable|string',
             'project_steps.*.order_no' => 'required|integer',
             'project_steps.*.need_approval' => 'required|boolean',
+            'project_steps.*.has_print' => 'required|boolean',
             'project_steps.*.term' => 'required|in:no term,hour,day,week,month,year',
             'project_steps.*.estimation_time_in_term' => 'nullable|integer',
             'project_steps.*.started_at' => 'nullable|date',
@@ -67,13 +68,16 @@ class ProjectRequest extends FormRequest
         ]);
 
         $data = $this->validated();
+
         $submittedSteps = $data['project_steps'];
+
         unset($data['project_steps']);
 
         DB::beginTransaction();
 
         try {
             $project = Project::create($data);
+
             $templateSteps = ProjectTemplateStep::query()
                 ->where('project_template_id', $project->project_template_id)
                 ->get()
@@ -89,6 +93,7 @@ class ProjectRequest extends FormRequest
             return $project->load('projectSteps');
         } catch (Throwable $exception) {
             DB::rollBack();
+
             throw $exception;
         }
     }
@@ -102,7 +107,9 @@ class ProjectRequest extends FormRequest
         ]);
 
         $data = $this->validated();
+
         $submittedSteps = $data['project_steps'];
+
         unset($data['project_steps']);
 
         DB::beginTransaction();
@@ -111,7 +118,9 @@ class ProjectRequest extends FormRequest
             $project = Project::query()
                 ->where('tenant_id', $this->tenant_id)
                 ->findOrFail($id);
+
             $project->fill($data);
+
             $project->save();
 
             $templateSteps = ProjectTemplateStep::query()
@@ -142,6 +151,7 @@ class ProjectRequest extends FormRequest
             return $project->load('projectSteps');
         } catch (Throwable $exception) {
             DB::rollBack();
+
             throw $exception;
         }
     }
@@ -158,6 +168,7 @@ class ProjectRequest extends FormRequest
         }
 
         $stepId = data_get($stepData, 'id');
+
         $step = $stepId
             ? ProjectStep::query()
                 ->where('project_id', $project->id)
@@ -172,6 +183,7 @@ class ProjectRequest extends FormRequest
             'desc' => data_get($stepData, 'desc'),
             'order_no' => data_get($stepData, 'order_no'),
             'need_approval' => data_get($stepData, 'need_approval'),
+            'has_print' => data_get($stepData, 'has_print'),
             'term' => data_get($stepData, 'term'),
             'estimation_time_in_term' => data_get($stepData, 'estimation_time_in_term', 0),
             'started_at' => data_get($stepData, 'started_at'),
