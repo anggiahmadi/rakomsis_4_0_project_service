@@ -7,6 +7,7 @@ use App\Models\ProjectStep;
 use App\Models\ProjectTemplateStep;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -85,8 +86,11 @@ class ProjectRequest extends FormRequest
 
             foreach ($submittedSteps as $stepData) {
                 $step = $this->saveProjectStep($project, $stepData, $templateSteps);
+
                 $this->syncStepForms($project, $step, data_get($stepData, 'forms', []));
             }
+
+            $this->calculateEstimationEndDates($project);
 
             DB::commit();
 
@@ -96,6 +100,30 @@ class ProjectRequest extends FormRequest
 
             throw $exception;
         }
+    }
+
+    private function calculateEstimationEndDates(Project $project): void
+    {
+        $estimatedEnd = Carbon::parse($project->started_at ?? $project->created_at);
+
+        foreach ($project->projectSteps()->orderBy('order_no')->orderBy('id')->get() as $step) {
+            $duration = (int) $step->estimation_time_in_term;
+
+            match ($step->term) {
+                'hour' => $estimatedEnd->addHours($duration),
+                'day' => $estimatedEnd->addDays($duration),
+                'week' => $estimatedEnd->addWeeks($duration),
+                'month' => $estimatedEnd->addMonths($duration),
+                'year' => $estimatedEnd->addYears($duration),
+                'no term' => null,
+            };
+
+            $step->estimation_ended_at = $estimatedEnd->toDateTimeString();
+            $step->save();
+        }
+
+        $project->estimation_ended_at = $estimatedEnd->toDateTimeString();
+        $project->save();
     }
 
     public function update(int $id)
@@ -185,7 +213,7 @@ class ProjectRequest extends FormRequest
             'need_approval' => data_get($stepData, 'need_approval'),
             'has_print' => data_get($stepData, 'has_print'),
             'term' => data_get($stepData, 'term'),
-            'estimation_time_in_term' => data_get($stepData, 'estimation_time_in_term', 0),
+            'estimation_time_in_term' => data_get($stepData, 'estimation_time_in_term') ?? 0,
             'started_at' => data_get($stepData, 'started_at'),
             'ended_at' => data_get($stepData, 'ended_at'),
         ]);

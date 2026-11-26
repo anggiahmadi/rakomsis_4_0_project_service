@@ -14,9 +14,11 @@ return new class extends Migration
         Schema::create('project_templates', function (Blueprint $table) {
             $table->id();
             $table->bigInteger('tenant_id')->unsigned()->index();
+            $table->bigInteger('document_workflow_detail_id')->nullable()->unsigned()->index();
             $table->string('code');
             $table->string('name');
             $table->string('desc', 500)->nullable();
+            $table->boolean('has_print')->default(false);
             $table->timestamps();
             $table->softDeletes();
             $table->unique(['tenant_id', 'code']);

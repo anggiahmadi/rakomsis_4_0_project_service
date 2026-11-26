@@ -24,11 +24,14 @@ class ProjectTemplateRequest extends FormRequest
     {
         return [
             'tenant_id' => 'required|integer',
+            'document_workflow_detail_id' => 'nullable|integer',
             'code' => 'required|string|max:255',
             'name' => 'required|string|max:255',
             'desc' => 'nullable|string',
+            'has_print' => 'required|boolean',
             'project_template_steps' => 'required|array|min:1',
             'project_template_steps.*.id' => 'nullable|integer',
+            'project_template_steps.*.document_workflow_detail_id' => 'nullable|integer',
             'project_template_steps.*.name' => 'required|string|max:255',
             'project_template_steps.*.desc' => 'nullable|string',
             'project_template_steps.*.order_no' => 'required|integer',
@@ -49,12 +52,13 @@ class ProjectTemplateRequest extends FormRequest
 
         return DB::transaction(function () {
             $projectTemplate = ProjectTemplate::create(
-                $this->only(['tenant_id', 'code', 'name', 'desc'])
+                $this->only(['tenant_id', 'code', 'name', 'desc', 'document_workflow_detail_id', 'has_print'])
             );
 
             foreach ($this->input('project_template_steps', []) as $stepData) {
                 $step = ProjectTemplateStep::create(array_merge(
                     Arr::only($stepData, [
+                        'document_workflow_detail_id',
                         'name',
                         'desc',
                         'order_no',
@@ -76,7 +80,7 @@ class ProjectTemplateRequest extends FormRequest
         });
     }
 
-    public function update($id)
+    public function update(int $id)
     {
         $this->validate([
             'code' => Rule::unique('project_templates')
@@ -86,7 +90,7 @@ class ProjectTemplateRequest extends FormRequest
 
         return DB::transaction(function () use ($id) {
             $projectTemplate = ProjectTemplate::findOrFail($id);
-            $projectTemplate->fill($this->only(['tenant_id', 'code', 'name', 'desc']));
+            $projectTemplate->fill($this->only(['tenant_id', 'code', 'name', 'desc', 'document_workflow_detail_id', 'has_print']));
             $projectTemplate->save();
 
             $existingSteps = ProjectTemplateStep::query()
@@ -107,6 +111,7 @@ class ProjectTemplateRequest extends FormRequest
                 $step->fill([
                     'tenant_id' => $this->tenant_id,
                     'project_template_id' => $projectTemplate->id,
+                    'document_workflow_detail_id' => data_get($stepData, 'document_workflow_detail_id'),
                     'name' => data_get($stepData, 'name'),
                     'desc' => data_get($stepData, 'desc'),
                     'order_no' => data_get($stepData, 'order_no'),

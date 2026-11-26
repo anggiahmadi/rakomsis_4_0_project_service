@@ -12,12 +12,15 @@ return new class extends Migration
             $table->id();
             $table->bigInteger('tenant_id')->unsigned()->index();
             $table->bigInteger('project_template_id')->unsigned()->index();
+            $table->bigInteger('document_workflow_detail_id')->nullable()->unsigned()->index('PTS_INDEX_1');
             $table->string('name');
             $table->text('desc')->nullable();
             $table->integer('order_no')->default(0);
             $table->boolean('need_approval')->default(false);
             $table->boolean('has_print')->default(false);
             $table->enum('term', ['no term', 'hour', 'day', 'week', 'month', 'year'])->default('no term');
+            $table->boolean('is_count_weekend')->default(false);
+            $table->boolean('is_count_holiday')->default(false);
             $table->integer('estimation_time_in_term')->default(0);
             $table->timestamps();
             $table->foreign('project_template_id')->references('id')->on('project_templates');

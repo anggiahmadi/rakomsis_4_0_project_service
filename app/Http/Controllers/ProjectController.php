@@ -203,6 +203,7 @@ class ProjectController extends Controller
     public function finishStep(Request $request, string $id, string $stepId)
     {
         $project = Project::findOrFail($id);
+        
         $step = $project->projectSteps()->findOrFail($stepId);
 
         abort_if(
@@ -215,7 +216,9 @@ class ProjectController extends Controller
         );
 
         $step->started_at ??= now();
+        
         $step->ended_at = now();
+        
         $step->save();
 
         $this->refreshProjectProgress($project);
@@ -228,7 +231,9 @@ class ProjectController extends Controller
         $request->validate(['reason' => 'required|string|max:1000']);
 
         $project = Project::findOrFail($id);
+        
         $step = $project->projectSteps()->findOrFail($stepId);
+        
         abort_unless(
             $step->ended_at,
             Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -236,6 +241,7 @@ class ProjectController extends Controller
         );
 
         $step->ended_at = null;
+        
         $step->save();
 
         $this->refreshProjectProgress($project);

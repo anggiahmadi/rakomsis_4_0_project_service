@@ -57,3 +57,12 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
 # rakomsis_4_0_project_service
+
+## Project estimates
+
+On project creation, step estimates are calculated sequentially in `order_no` order,
+starting at the project's `started_at` or its creation time if no start is provided.
+Each step's duration is added in its specified calendar unit; `no term` and missing
+durations count as zero. The project's estimate is the end of the last step. Step
+start dates do not affect this calculation, and updates do not recalculate estimates.
+Run the database migrations before using this feature.

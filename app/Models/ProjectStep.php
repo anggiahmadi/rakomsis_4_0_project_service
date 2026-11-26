@@ -13,6 +13,7 @@ class ProjectStep extends Model
         'tenant_id',
         'project_id',
         'project_template_step_id',
+        'document_workflow_detail_id',
         'name',
         'desc',
         'order_no',

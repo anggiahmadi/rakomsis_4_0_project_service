@@ -11,6 +11,7 @@ class Project extends Model
     protected $fillable = [
         'tenant_id',
         'project_template_id',
+        'document_workflow_detail_id',
         'source',
         'source_id',
         'source_info',
@@ -21,6 +22,7 @@ class Project extends Model
         'started_at',
         'ended_at',
         'status',
+        'has_print',
     ];
 
     public function projectTemplate()

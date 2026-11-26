@@ -12,6 +12,7 @@ class ProjectTemplateStep extends Model
     protected $fillable = [
         'tenant_id',
         'project_template_id',
+        'document_workflow_detail_id',
         'name',
         'desc',
         'order_no',

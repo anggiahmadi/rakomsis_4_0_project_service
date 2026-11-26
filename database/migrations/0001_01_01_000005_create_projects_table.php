@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->bigInteger('tenant_id')->unsigned()->index();
             $table->bigInteger('project_template_id')->unsigned()->index();
+            $table->bigInteger('document_workflow_detail_id')->nullable()->unsigned()->index();
             $table->string('source'); // To determine the source of the project, e.g., sales order, customer request, internal project, etc.
             $table->bigInteger('source_id')->unsigned()->index()->nullable(); // To store the ID of the source, e.g., sales order ID, customer request ID, etc.
             $table->string('source_info')->nullable(); // To store additional information about the source, e.g., sales order number, customer request details, etc.
@@ -25,7 +26,9 @@ return new class extends Migration
             $table->double('progress')->default(0); // To store the progress of the project in percentage, e.g., 0%, 25%, 50%, 75%, 100%
             $table->dateTime('started_at')->nullable(); // To store the start date and time of the project
             $table->dateTime('ended_at')->nullable(); // To store the end date and time of the project
+            $table->dateTime('estimation_ended_at')->nullable(); // To store the estimated end date and time of the project
             $table->enum('status', ['draft', 'in progress', 'completed', 'on hold', 'cancelled'])->default('draft'); // To determine the status of the project,
+            $table->boolean('has_print')->default(false);
             $table->timestamps();
             $table->softDeletes();
             $table->unique(['tenant_id', 'code']);

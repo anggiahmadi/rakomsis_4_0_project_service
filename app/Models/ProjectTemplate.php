@@ -10,9 +10,11 @@ class ProjectTemplate extends Model
 
     protected $fillable = [
         'tenant_id',
+        'document_workflow_detail_id',
         'code',
         'name',
         'desc',
+        'has_print',
     ];
 
     public function projectTemplateSteps()
