@@ -209,6 +209,7 @@ class ProjectRequest extends FormRequest
             'tenant_id' => $project->tenant_id,
             'project_id' => $project->id,
             'project_template_step_id' => $templateStepId,
+            'document_workflow_detail_id' => data_get($stepData, 'document_workflow_detail_id'),
             'name' => data_get($stepData, 'name'),
             'desc' => data_get($stepData, 'desc'),
             'order_no' => data_get($stepData, 'order_no'),
