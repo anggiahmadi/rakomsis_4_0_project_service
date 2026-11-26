@@ -9,6 +9,11 @@ class ProjectStep extends Model
 {
     protected $table = 'project_steps';
 
+    protected $casts = [
+    'need_approval' => 'boolean',
+    'has_print' => 'boolean',
+];
+
     protected $fillable = [
         'tenant_id',
         'project_id',
