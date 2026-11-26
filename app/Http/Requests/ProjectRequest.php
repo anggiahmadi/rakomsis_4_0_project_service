@@ -36,6 +36,7 @@ class ProjectRequest extends FormRequest
         return [
             'tenant_id' => 'required|integer',
             'project_template_id' => 'required|exists:project_templates,id',
+            'document_workflow_detail_id' => 'nullable|integer',
             'source' => 'required|string|max:255',
             'source_id' => 'nullable|integer',
             'source_info' => 'nullable|string|max:255',
@@ -48,6 +49,7 @@ class ProjectRequest extends FormRequest
             'project_steps' => 'required|array',
             'project_steps.*.id' => 'nullable|integer',
             'project_steps.*.project_template_step_id' => 'nullable|integer|exists:project_template_steps,id',
+            'project_steps.*.document_workflow_detail_id' => 'nullable|integer',
             'project_steps.*.name' => 'required|string|max:255',
             'project_steps.*.desc' => 'nullable|string',
             'project_steps.*.order_no' => 'required|integer',
