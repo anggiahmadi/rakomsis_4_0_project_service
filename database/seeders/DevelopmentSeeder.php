@@ -51,7 +51,7 @@ class DevelopmentSeeder extends Seeder
             [
                 'tenant_id' => 1,
                 'project_template_id' => 1,
-                'name' => 'Daftar Bahan Halal dan daftar Produk',
+                'name' => 'Daftar Bahan Halal dan Daftar Produk',
                 'desc' => 'Melengkapi dokumen daftar bahan halal dan daftar produk',
                 'order_no' => 4,
                 'term' => 'day',
@@ -173,6 +173,73 @@ class DevelopmentSeeder extends Seeder
                 'order_no' => 17,
                 'term' => 'day',
                 'estimation_time_in_term' => 2
+            ]
+        ]);
+
+        DB::table('form_project_step_template')->insert([
+            [
+                'project_template_step_id' => 1,
+                'form_template_id' => 1
+            ],
+            [
+                'project_template_step_id' => 2,
+                'form_template_id' => 2
+            ],
+            [
+                'project_template_step_id' => 2,
+                'form_template_id' => 3
+            ],
+            [
+                'project_template_step_id' => 3,
+                'form_template_id' => 7
+            ],
+            [
+                'project_template_step_id' => 3,
+                'form_template_id' => 8
+            ],
+            [
+                'project_template_step_id' => 4,
+                'form_template_id' => 9
+            ],
+            [
+                'project_template_step_id' => 4,
+                'form_template_id' => 10
+            ],
+            [
+                'project_template_step_id' => 5,
+                'form_template_id' => 11
+            ],
+            [
+                'project_template_step_id' => 6,
+                'form_template_id' => 12
+            ],
+            [
+                'project_template_step_id' => 7,
+                'form_template_id' => 13
+            ],
+            [
+                'project_template_step_id' => 8,
+                'form_template_id' => 16
+            ],
+            [
+                'project_template_step_id' => 10,
+                'form_template_id' => 19
+            ],
+            [
+                'project_template_step_id' => 11,
+                'form_template_id' => 18
+            ],
+            [
+                'project_template_step_id' => 16,
+                'form_template_id' => 5
+            ],
+            [
+                'project_template_step_id' => 16,
+                'form_template_id' => 6
+            ],
+            [
+                'project_template_step_id' => 17,
+                'form_template_id' => 4
             ]
         ]);
     }
